@@ -8,9 +8,13 @@ authors = ["Devan Benz <devandbenz@gmail.com>"]
 [dependencies]
 async-trait = "0.1.92"
 dashmap = "6.2.1"
-datafusion = "54.1.0"
+datafusion = "55.1.0"
+datafusion-proto = { version = "55.1.0", features = ["json"] }
 redb = "4.1.0"
 typetag = "0.2.23"
+tokio = "1.53.1"
+datafusion-common = "55.1.0"
+datafusion-session = "55.1.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"
