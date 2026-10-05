@@ -1,23 +1,92 @@
+mod serialization;
+
 use async_trait::async_trait;
 use dashmap::DashMap;
-use datafusion::catalog::{SchemaProvider, TableProvider};
+use datafusion::catalog::{CatalogProvider, SchemaProvider, TableProvider};
 use datafusion::common::DataFusionError;
-use datafusion_proto::logical_plan::file_formats::JsonLogicalExtensionCodec;
-use datafusion_session::CatalogProvider;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
+pub use crate::serialization::{JsonSerializableTableProvider, SerializableTableAndSchema};
+use crate::serialization::{JsonData, SerializableSchemaProvider};
+
+#[derive(Debug)]
+struct DatafusionJsonCatalogInner {
+    catalog_name: String,
+    catalog_path: String,
+    schema_providers: DashMap<String, Arc<DatafusionJsonSchema>>,
+}
 
 #[derive(Debug)]
 pub struct DatafusionJsonCatalog {
     inner: Arc<Mutex<DatafusionJsonCatalogInner>>,
 }
 
-#[derive(Debug)]
-struct DatafusionJsonCatalogInner {
-    catalog_name: String,
-    catalog_path: String,
-    codec: JsonLogicalExtensionCodec,
-    schema_providers: DashMap<String, Arc<DatafusionJsonSchema>>,
+impl DatafusionJsonCatalog {
+    pub fn new(catalog_name: String, catalog_path: String) -> datafusion::common::Result<Self> {
+        let inner = Arc::new(Mutex::new(DatafusionJsonCatalogInner {
+            catalog_name,
+            catalog_path,
+            schema_providers: Default::default(),
+        }));
+        Ok(Self { inner })
+    }
+
+    pub fn from_json(json: &str) -> datafusion::common::Result<Self> {
+        let json_data: JsonData = serde_json::from_str(json).unwrap();
+        let inner = Arc::new(Mutex::new(DatafusionJsonCatalogInner {
+            catalog_name: json_data.catalog_metadata.name,
+            catalog_path: json_data.catalog_metadata.path,
+            schema_providers: Default::default(),
+        }));
+
+        for schema_provider in json_data.schema_providers {
+            let schema_provider_ref = Arc::new(DatafusionJsonSchema::new());
+            for table in schema_provider.tables {}
+        }
+
+        Ok(Self { inner })
+    }
+
+    pub fn register_table(
+        &self,
+        schema_name: &str,
+        name: String,
+        table: Arc<dyn JsonSerializableTableProvider>,
+    ) -> datafusion::common::Result<()> {
+        let inner = self.inner.lock().unwrap();
+        match inner.schema_providers.get_mut(schema_name) {
+            None => {}
+            Some(schema_provider) => {
+                schema_provider.register_table(name, table.table_provider())?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn encode_json(&self) -> datafusion::common::Result<String> {
+        let inner = self.inner.lock().unwrap();
+        let mut data = JsonData::new(inner.catalog_name.clone(), inner.catalog_path.clone());
+        for provider in inner.schema_providers.iter() {
+            let mut provider_tables = vec![];
+            for name in provider.table_names() {
+                let schema = provider.table(&name).await?.unwrap().schema();
+                let s = SerializableTableAndSchema {
+                    table_name: name.clone(),
+                    schema: schema.clone(),
+                };
+                provider_tables.push(s);
+            }
+
+            data.schema_providers.push(SerializableSchemaProvider {
+                tables: provider_tables,
+            })
+        }
+
+        let output_json = serde_json::to_string(&data).unwrap();
+
+        Ok(output_json)
+    }
 }
 
 #[async_trait]
@@ -33,12 +102,14 @@ impl CatalogProvider for DatafusionJsonCatalog {
     }
 
     fn schema(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
-        if let Some(schema_provider) = self.inner
+        if let Some(schema_provider) = self
+            .inner
             .lock()
             .unwrap()
             .schema_providers
             .get(name)
-            .map(|r| r.value().clone()) {
+            .map(|r| r.value().clone())
+        {
             let a: Arc<dyn SchemaProvider> = schema_provider;
             Some(a)
         } else {
@@ -50,15 +121,16 @@ impl CatalogProvider for DatafusionJsonCatalog {
         &self,
         name: &str,
         schema: Arc<dyn SchemaProvider>,
-    ) -> datafusion_common::Result<Option<Arc<dyn SchemaProvider>>> {
-        Ok(self.inner.lock().unwrap().schema_providers.insert(name.to_string(), schema))
+    ) -> datafusion::common::Result<Option<Arc<dyn SchemaProvider>>> {
+        let mut inner = self.inner.lock().unwrap();
+        Ok()
     }
 
     fn deregister_schema(
         &self,
         _name: &str,
         _cascade: bool,
-    ) -> datafusion_common::Result<Option<Arc<dyn SchemaProvider>>> {
+    ) -> datafusion::common::Result<Option<Arc<dyn SchemaProvider>>> {
         todo!()
     }
 }
@@ -71,13 +143,13 @@ pub struct DatafusionJsonSchema {
 
 #[derive(Debug)]
 struct DatafusionJsonSchemaInner {
-    table_names_cache: DashMap<String, Arc<dyn TableProvider>>,
+    table_names_cache: DashMap<String, Arc<dyn JsonSerializableTableProvider>>,
 }
 
 impl DatafusionJsonSchema {
-    pub fn new(path: String, catalog_name: String) -> Self {
+    pub fn new() -> Self {
         let inner = Arc::new(Mutex::new(DatafusionJsonSchemaInner {
-            table_names_cache: DashMap::<String, Arc<dyn TableProvider>>::new(),
+            table_names_cache: DashMap::<String, Arc<dyn JsonSerializableTableProvider>>::new(),
         }));
 
         Self { inner }
@@ -105,28 +177,8 @@ impl SchemaProvider for DatafusionJsonSchema {
             .unwrap()
             .table_names_cache
             .get(name)
-            .map(|table| Ok(Some(table.clone())))
+            .map(|table| Ok(Some(table.table_provider().clone())))
             .unwrap_or(Ok(None))
-    }
-
-    fn register_table(
-        &self,
-        name: String,
-        table: Arc<dyn TableProvider>,
-    ) -> datafusion::common::Result<Option<Arc<dyn TableProvider>>> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
-            .table_names_cache
-            .insert(name, table))
-    }
-
-    fn deregister_table(
-        &self,
-        name: &str,
-    ) -> datafusion::common::Result<Option<Arc<dyn TableProvider>>> {
-        todo!()
     }
 
     fn table_exist(&self, name: &str) -> bool {
@@ -144,15 +196,11 @@ mod tests {
     use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
     use datafusion::arrow::record_batch::RecordBatch;
     use datafusion::catalog::MemTable;
-    use datafusion_proto::logical_plan::LogicalExtensionCodec;
 
     #[test]
     fn build_a_json_catalog() {
         let tmp_file = tempfile::NamedTempFile::new().unwrap();
-        let catalog = DatafusionJsonSchema::new(
-            tmp_file.path().to_str().unwrap().to_owned(),
-            "test".to_owned(),
-        );
+        let catalog = DatafusionJsonSchema::new();
 
         assert!(catalog.table_names().is_empty());
     }
@@ -160,10 +208,7 @@ mod tests {
     #[tokio::test]
     async fn write_to_json_catalog() {
         let tmp_file = tempfile::NamedTempFile::new().unwrap();
-        let catalog = DatafusionJsonSchema::new(
-            tmp_file.path().to_str().unwrap().to_owned(),
-            "test".to_owned(),
-        );
+        let catalog = DatafusionJsonSchema::new();
 
         assert!(catalog.table_names().is_empty());
 
@@ -197,14 +242,6 @@ mod tests {
         let table = catalog.table("tadashi").await.unwrap();
         assert!(table.is_some());
         let table = table.unwrap();
-        let table_ref = datafusion_common::TableReference::from("tadashi");
-        let mut buf = Vec::new();
-
-        let codec = JsonLogicalExtensionCodec {};
-        let r = codec.try_encode_table_provider(&table_ref, table, &mut buf);
-        println!("{:?}", r);
-
-        assert!(r.is_ok());
-        assert!(!buf.is_empty());
+        let table_ref = datafusion::common::TableReference::from("tadashi");
     }
 }

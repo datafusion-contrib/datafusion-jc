@@ -62,12 +62,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
-
-[[package]]
 name = "ar_archive_writer"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -167,7 +161,7 @@ dependencies = [
  "arrow-schema",
  "arrow-select",
  "atoi",
- "base64 0.23.1",
+ "base64",
  "chrono",
  "comfy-table",
  "half",
@@ -277,6 +271,7 @@ version = "59.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10fab8d4563491417ba801fab29d205104d20d4bdf37bda6cd1cf425cff598cd"
 dependencies = [
+ "serde",
  "serde_core",
  "serde_json",
 ]
@@ -349,12 +344,6 @@ name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
-
-[[package]]
-name = "base64"
-version = "0.22.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "base64"
@@ -701,6 +690,7 @@ dependencies = [
  "object_store",
  "parking_lot",
  "parquet",
+ "serde",
  "sqlparser",
  "tempfile",
  "tokio",
@@ -816,7 +806,6 @@ dependencies = [
  "datafusion-physical-expr-adapter",
  "datafusion-physical-expr-common",
  "datafusion-physical-plan",
- "datafusion-proto-models",
  "datafusion-session",
  "flate2",
  "futures",
@@ -850,7 +839,6 @@ dependencies = [
  "datafusion-expr",
  "datafusion-physical-expr-common",
  "datafusion-physical-plan",
- "datafusion-proto-models",
  "datafusion-session",
  "futures",
  "itertools 0.15.0",
@@ -874,7 +862,6 @@ dependencies = [
  "datafusion-expr",
  "datafusion-physical-expr-common",
  "datafusion-physical-plan",
- "datafusion-proto-models",
  "datafusion-session",
  "futures",
  "object_store",
@@ -898,7 +885,6 @@ dependencies = [
  "datafusion-expr",
  "datafusion-physical-expr-common",
  "datafusion-physical-plan",
- "datafusion-proto-models",
  "datafusion-session",
  "futures",
  "object_store",
@@ -927,7 +913,6 @@ dependencies = [
  "datafusion-physical-expr-adapter",
  "datafusion-physical-expr-common",
  "datafusion-physical-plan",
- "datafusion-proto-models",
  "datafusion-pruning",
  "datafusion-session",
  "futures",
@@ -987,8 +972,6 @@ dependencies = [
  "datafusion-functions-aggregate-common",
  "datafusion-functions-window-common",
  "datafusion-physical-expr-common",
- "datafusion-proto-common",
- "datafusion-proto-models",
  "indexmap",
  "itertools 0.15.0",
  "recursive",
@@ -1016,7 +999,7 @@ checksum = "763bbfeec40b55a8a961d7349c0fcfcec4f3f66cc234d6295250b95371b85e34"
 dependencies = [
  "arrow",
  "arrow-buffer",
- "base64 0.23.1",
+ "base64",
  "blake2",
  "blake3",
  "chrono",
@@ -1148,13 +1131,10 @@ dependencies = [
  "async-trait",
  "dashmap",
  "datafusion",
- "datafusion-common",
- "datafusion-proto",
- "datafusion-session",
- "redb",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
- "typetag",
 ]
 
 [[package]]
@@ -1201,7 +1181,6 @@ dependencies = [
  "datafusion-expr-common",
  "datafusion-functions-aggregate-common",
  "datafusion-physical-expr-common",
- "datafusion-proto-models",
  "half",
  "hashbrown 0.17.1",
  "indexmap",
@@ -1237,7 +1216,6 @@ dependencies = [
  "chrono",
  "datafusion-common",
  "datafusion-expr-common",
- "datafusion-proto-models",
  "hashbrown 0.17.1",
  "indexmap",
  "itertools 0.15.0",
@@ -1287,8 +1265,6 @@ dependencies = [
  "datafusion-functions-window-common",
  "datafusion-physical-expr",
  "datafusion-physical-expr-common",
- "datafusion-proto-common",
- "datafusion-proto-models",
  "futures",
  "half",
  "hashbrown 0.17.1",
@@ -1300,60 +1276,6 @@ dependencies = [
  "pin-project-lite",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "datafusion-proto"
-version = "55.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f85dee73fa4bab473854d5715ab49b122f2236862291e3c5da582b44e0fd5f9"
-dependencies = [
- "arrow",
- "datafusion-catalog",
- "datafusion-catalog-listing",
- "datafusion-common",
- "datafusion-datasource",
- "datafusion-datasource-arrow",
- "datafusion-datasource-csv",
- "datafusion-datasource-json",
- "datafusion-datasource-parquet",
- "datafusion-execution",
- "datafusion-expr",
- "datafusion-functions-table",
- "datafusion-physical-expr",
- "datafusion-physical-expr-common",
- "datafusion-physical-plan",
- "datafusion-proto-common",
- "datafusion-proto-models",
- "object_store",
- "prost",
- "serde_json",
-]
-
-[[package]]
-name = "datafusion-proto-common"
-version = "55.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57901d70c724dab7cb604fea579f5324332244e3c400ff2d7c9b5fc065051437"
-dependencies = [
- "arrow",
- "datafusion-common",
- "pbjson",
- "prost",
- "serde",
-]
-
-[[package]]
-name = "datafusion-proto-models"
-version = "55.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a574908455152a11abea49c7916cc8a504de946e5302c7e40bab632cbbcb9b2"
-dependencies = [
- "datafusion-common",
- "datafusion-proto-common",
- "pbjson",
- "prost",
- "serde",
 ]
 
 [[package]]
@@ -1451,17 +1373,6 @@ name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
-
-[[package]]
-name = "erased-serde"
-version = "0.4.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2add8a07dd6a8d93ff627029c51de145e12686fbc36ecb298ac22e74cf02dec"
-dependencies = [
- "serde",
- "serde_core",
- "typeid",
-]
 
 [[package]]
 name = "errno"
@@ -1878,15 +1789,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inventory"
-version = "0.3.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2213,7 +2115,7 @@ dependencies = [
  "arrow-ipc",
  "arrow-schema",
  "arrow-select",
- "base64 0.23.1",
+ "base64",
  "brotli",
  "bytes",
  "chrono",
@@ -2232,16 +2134,6 @@ dependencies = [
  "tokio",
  "twox-hash",
  "zstd",
-]
-
-[[package]]
-name = "pbjson"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8edd1efdd8ab23ba9cb9ace3d9987a72663d5d7c9f74fa00b51d6213645cf6c"
-dependencies = [
- "base64 0.22.1",
- "serde",
 ]
 
 [[package]]
@@ -2340,29 +2232,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prost"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
-dependencies = [
- "bytes",
- "prost-derive",
-]
-
-[[package]]
-name = "prost-derive"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
-dependencies = [
- "anyhow",
- "itertools 0.14.0",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "psm"
 version = "0.1.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2440,15 +2309,6 @@ checksum = "76009fbe0614077fc1a2ce255e3a1881a2e3a3527097d5dc6d8212c585e7e38b"
 dependencies = [
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "redb"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e925444704b5f17d32bf42f5b6e2df050bceebc3dcd6e71cc73dafe8092e839"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -2864,40 +2724,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8464ec13c3691491391d9fce00f6416c9a48e46972f72d7865688be2080192c9"
 
 [[package]]
-name = "typeid"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
-
-[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
-
-[[package]]
-name = "typetag"
-version = "0.2.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c90e86058a30d42a1a928dfb4b49bb33c98c3a2b4909492e6b0881cd94798ec2"
-dependencies = [
- "erased-serde",
- "inventory",
- "once_cell",
- "serde",
- "typetag-impl",
-]
-
-[[package]]
-name = "typetag-impl"
-version = "0.2.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f153acc4e99a5f2a5aefa09fb078be54e26271b2813f6041200b224c098d8328"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.3",
-]
 
 [[package]]
 name = "unicode-ident"
