@@ -1,9 +1,7 @@
 use datafusion::arrow::array::{Int32Array, RecordBatch};
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
-use datafusion::catalog::{CatalogProvider, MemTable, MemorySchemaProvider, TableProvider};
-use datafusion_jc::{
-    DatafusionJsonCatalog, JsonSerializableTableProvider, SerializableTableAndSchema,
-};
+use datafusion::catalog::{CatalogProvider, MemTable, MemorySchemaProvider};
+use datafusion_jc::DatafusionJsonCatalog;
 use std::sync::Arc;
 use std::vec;
 
@@ -16,21 +14,6 @@ impl MyTableProvider {
     fn new(schema: SchemaRef, records: Vec<RecordBatch>) -> Self {
         let inner = Arc::new(MemTable::try_new(schema, vec![records]).unwrap());
         Self { inner }
-    }
-}
-
-// To register a table with the catalog, we need to implement the JsonSerializableTableProvider trait.
-impl JsonSerializableTableProvider for MyTableProvider {
-    fn table_provider(&self) -> Arc<dyn TableProvider> {
-        self.inner.clone()
-    }
-
-    fn serialize(&self) -> datafusion::common::Result<SerializableTableAndSchema> {
-        todo!()
-    }
-
-    fn deserialize(&self, input: &str) -> datafusion::common::Result<()> {
-        todo!()
     }
 }
 
@@ -53,10 +36,9 @@ async fn main() -> datafusion::common::Result<()> {
         vec![Arc::new(id_array)],
     )?];
 
-    // Using MyTableProvider which implements JsonSerializableTableProvider
-    // we can register a table with the catalog.
+    // Register a table with the catalog.
     let table = Arc::new(MyTableProvider::new(schema.clone(), batch));
-    catalog.register_table(schema_name, String::from("cat_metrics"), table.clone())?;
+    catalog.register_table(schema_name, String::from("cat_metrics"), table.inner.clone())?;
 
     // Encode the catalog to JSON.
     let json = catalog.encode_json().await?;
