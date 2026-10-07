@@ -7,45 +7,55 @@ Native JSON catalog for Apache DataFusion.
 Usage
 
 ```rust
-use datafusion::arrow::array::{Int32Array, RecordBatch};
+use async_trait::async_trait;
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
-use datafusion::catalog::{CatalogProvider, MemTable, MemorySchemaProvider, TableProvider};
-use datafusion_jc::{
-    DatafusionJsonCatalog, JsonSerializableTableProvider, SerializableTableAndSchema,
-};
+use datafusion::catalog::{CatalogProvider, MemorySchemaProvider, Session, TableProvider};
+use datafusion::datasource::TableType;
+use datafusion::logical_expr::Expr;
+use datafusion::physical_plan::ExecutionPlan;
+use datafusion_jc::{DatafusionJsonCatalog, SerializableTableProvider};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::vec;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct MyTableProvider {
-    inner: Arc<MemTable>,
+    name: String,
+    schema: SchemaRef,
 }
 
 impl MyTableProvider {
-    fn new(schema: SchemaRef, records: Vec<RecordBatch>) -> Self {
-        let inner = Arc::new(MemTable::try_new(schema, vec![records]).unwrap());
-        Self { inner }
+    fn new(name: String, schema: SchemaRef) -> Self {
+        Self { name, schema }
     }
 }
 
-// To register a table with the catalog, we need to implement the JsonSerializableTableProvider trait.
-impl JsonSerializableTableProvider for MyTableProvider {
-    fn table_provider(&self) -> Arc<dyn TableProvider> {
-        self.inner.clone()
+#[async_trait]
+impl TableProvider for MyTableProvider {
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
     }
 
-    fn serialize(&self) -> datafusion::common::Result<SerializableTableAndSchema> {
-        todo!()
+    fn table_type(&self) -> TableType {
+        TableType::Base
     }
 
-    fn deserialize(&self, input: &str) -> datafusion::common::Result<()> {
+    async fn scan(
+        &self,
+        _state: &dyn Session,
+        _projection: Option<&Vec<usize>>,
+        _filters: &[Expr],
+        _limit: Option<usize>,
+    ) -> datafusion::common::Result<Arc<dyn ExecutionPlan>> {
         todo!()
     }
 }
+
+#[typetag::serde]
+impl SerializableTableProvider for MyTableProvider {}
 
 #[tokio::main]
 async fn main() -> datafusion::common::Result<()> {
-
     // Create a new DatafusionJsonCatalog, we will use this to register schemas and tables.
     let schema_name = "foo_bar";
     let catalog =
@@ -54,22 +64,14 @@ async fn main() -> datafusion::common::Result<()> {
     // Register a new schema with the catalog.
     catalog.register_schema(schema_name, Arc::new(MemorySchemaProvider::new()))?;
 
-    // Build a record batch to generate a table.
-    let id_array = Int32Array::from(vec![1, 2, 3, 4, 5]);
+    // Register a table with the catalog.
     let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));
-    let batch = vec![RecordBatch::try_new(
-        schema.clone(),
-        vec![Arc::new(id_array)],
-    )?];
-
-    // Using MyTableProvider which implements JsonSerializableTableProvider
-    // we can register a table with the catalog.
-    let table = Arc::new(MyTableProvider::new(schema.clone(), batch));
-    catalog.register_table(schema_name, String::from("cat_metrics"), table.clone())?;
+    let table = Arc::new(MyTableProvider::new("foo".to_string(), schema.clone()));
+    catalog.register_table(schema_name, String::from("cat_metrics"), table)?;
 
     // Encode the catalog to JSON.
     let json = catalog.encode_json().await?;
-    let expected = r#"{"catalog_metadata":{"name":"tadashi_catalog","path":"foo/"},"schema_providers":[{"tables":[{"table_name":"cat_metrics","schema":{"fields":[{"name":"id","data_type":"Int32","nullable":false,"dict_id":0,"dict_is_ordered":false,"metadata":{}}],"metadata":{}}}]}]}"#;
+    let expected = r#"{"catalog_metadata":{"name":"tadashi_catalog","path":"foo/"},"schema_providers":[{"schema_name":"foo_bar","tables":[{"table_name":"cat_metrics","schema":{"fields":[{"name":"id","data_type":"Int32","nullable":false,"dict_id":0,"dict_is_ordered":false,"metadata":{}}],"metadata":{}},"provider":{"type":"MyTableProvider","name":"foo","schema":{"fields":[{"name":"id","data_type":"Int32","nullable":false,"dict_id":0,"dict_is_ordered":false,"metadata":{}}],"metadata":{}}}}]}]}"#;
     assert_eq!(json, expected);
 
     Ok(())

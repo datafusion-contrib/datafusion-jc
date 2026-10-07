@@ -1,3 +1,4 @@
+use crate::serialization::SerializableTableProvider;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{SchemaProvider, TableProvider};
@@ -12,17 +13,27 @@ pub struct DatafusionJsonSchema {
 
 #[derive(Debug)]
 struct DatafusionJsonSchemaInner {
-    table_names_cache: DashMap<String, Arc<dyn TableProvider>>,
+    table_names_cache: DashMap<String, Arc<dyn SerializableTableProvider>>,
 }
 
 impl DatafusionJsonSchema {
     /// Creates an empty schema with no tables.
     pub fn new() -> Self {
         let inner = Arc::new(Mutex::new(DatafusionJsonSchemaInner {
-            table_names_cache: DashMap::<String, Arc<dyn TableProvider>>::new(),
+            table_names_cache: DashMap::<String, Arc<dyn SerializableTableProvider>>::new(),
         }));
 
         Self { inner }
+    }
+
+    pub fn get_serializable_table_provider(
+        &self,
+        key: String,
+    ) -> Option<Arc<dyn SerializableTableProvider>> {
+        match self.inner.lock().unwrap().table_names_cache.get(&key) {
+            None => None,
+            Some(table_provider) => Some(table_provider.clone()),
+        }
     }
 
     /// Registers `table` under `name`, replacing any existing table with that
@@ -30,12 +41,12 @@ impl DatafusionJsonSchema {
     pub fn register_table(
         &self,
         name: String,
-        table: Arc<dyn TableProvider>,
+        table: Arc<dyn SerializableTableProvider>,
     ) -> datafusion::common::Result<Option<Arc<dyn TableProvider>>> {
         let inner = self.inner.lock().unwrap();
         inner.table_names_cache.insert(name, table.clone());
 
-        Ok(Some(table.clone()))
+        Ok(Some(table))
     }
 }
 
@@ -60,7 +71,7 @@ impl SchemaProvider for DatafusionJsonSchema {
             .unwrap()
             .table_names_cache
             .get(name)
-            .map(|table| Ok(Some(table.clone())))
+            .map(|table| Ok(Some(table.clone() as Arc<dyn TableProvider>)))
             .unwrap_or(Ok(None))
     }
 
