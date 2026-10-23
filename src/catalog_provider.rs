@@ -1,5 +1,3 @@
-use crate::schema_provider::DatafusionJsonSchema;
-use crate::serialization::{JsonData, SerializableSchemaProvider, SerializableTableAndSchema};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
@@ -7,6 +5,10 @@ use datafusion::common::DataFusionError;
 use datafusion::datasource::TableProvider;
 use datafusion::execution::SessionState;
 use std::sync::{Arc, Mutex};
+
+use crate::error::DatafusionJsonError::{self, GenericError};
+use crate::schema_provider::DatafusionJsonSchema;
+use crate::serialization::{JsonData, SerializableSchemaProvider, SerializableTableAndSchema};
 
 #[derive(Debug)]
 struct DatafusionJsonCatalogInner {
@@ -52,9 +54,12 @@ impl DatafusionJsonCatalog {
         // TODO: Instead of serializing the entire table provider I need to make it so we can just
         // rebuild the table_provider based on the data serialized in the JSON.
         for schema_provider in json_data.schema_providers {
-            let schema_provider_ref = Arc::new(DatafusionJsonSchema::new());
+            let schema_provider_ref =
+                Arc::new(DatafusionJsonSchema::new(schema_provider.schema_name));
+            // TODO: Fix me!
+
             for table in schema_provider.tables {
-                schema_provider_ref.register_table(table.table_name, table.provider.clone())?;
+                schema_provider_ref.register_table(table.table_name, table..clone())?;
             }
             inner
                 .lock()
@@ -70,25 +75,14 @@ impl DatafusionJsonCatalog {
     /// registered table to a JSON string.
     pub async fn encode_json(&self) -> datafusion::common::Result<String> {
         let inner = self.inner.lock().unwrap();
-        let mut data = JsonData::new(inner.catalog_name.clone(), inner.catalog_path.clone());
-        for provider in inner.schema_providers.iter() {
-            let mut provider_tables = vec![];
-            for name in provider.table_names() {
-                let schema = provider.table(&name).await?.unwrap().schema();
-                let table_provider = provider.get_serializable_schema_provider(key);
-                let s = SerializableTableAndSchema {
-                    table_name: name,
-                    schema,
-                };
-                provider_tables.push(s);
-            }
-
-            data.schema_providers.push(SerializableSchemaProvider {
-                schema_name: provider.key().clone(),
-                tables: provider_tables,
-            })
-        }
-
+        let schema_providers = self
+            .get_serializable_schemas()
+            .map_err(|err| DataFusionError::Execution(err.to_string()))?;
+        let data = JsonData::new(
+            inner.catalog_name.clone(),
+            inner.catalog_path.clone(),
+            schema_providers,
+        );
         let output_json = serde_json::to_string(&data).unwrap();
 
         Ok(output_json)
@@ -111,6 +105,36 @@ impl DatafusionJsonCatalog {
                 schema_provider.register_table(name, table)?;
                 Ok(())
             }
+        }
+    }
+
+    fn get_serializable_schemas(
+        &self,
+    ) -> Result<Vec<SerializableSchemaProvider>, DatafusionJsonError> {
+        let mut serializable_schemas = vec![];
+        match self.inner.lock() {
+            Ok(inner) => {
+                for entry in inner.schema_providers.iter() {
+                    let schema_provider = entry.value();
+                    let tables = schema_provider
+                        .table_names()
+                        .iter()
+                        .map(|table| {
+                            schema_provider
+                                .get_serializable_table(table.clone())
+                                .unwrap()
+                        })
+                        .collect::<Vec<SerializableTableAndSchema>>();
+                    let name = schema_provider.name();
+                    serializable_schemas.push(SerializableSchemaProvider {
+                        schema_name: name,
+                        tables,
+                    });
+                }
+
+                Ok(serializable_schemas)
+            }
+            Err(err) => Err(GenericError(err.to_string())),
         }
     }
 }
@@ -149,7 +173,7 @@ impl CatalogProvider for DatafusionJsonCatalog {
         schema: Arc<dyn SchemaProvider>,
     ) -> datafusion::common::Result<Option<Arc<dyn SchemaProvider>>> {
         let inner = self.inner.lock().unwrap();
-        let schema_provider = Arc::new(DatafusionJsonSchema::new());
+        let schema_provider = Arc::new(DatafusionJsonSchema::new(name.to_string()));
         inner
             .schema_providers
             .insert(name.to_string(), schema_provider);

@@ -1,4 +1,5 @@
 mod catalog_provider;
+pub(crate) mod error;
 mod schema_provider;
 mod serialization;
 pub use crate::catalog_provider::DatafusionJsonCatalog;

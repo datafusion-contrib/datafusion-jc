@@ -9,10 +9,14 @@ pub(crate) struct JsonData {
 }
 
 impl JsonData {
-    pub(crate) fn new(name: String, path: String) -> Self {
+    pub(crate) fn new(
+        name: String,
+        path: String,
+        schema_providers: Vec<SerializableSchemaProvider>,
+    ) -> Self {
         Self {
             catalog_metadata: CatalogMeta { name, path },
-            schema_providers: vec![],
+            schema_providers,
         }
     }
 }

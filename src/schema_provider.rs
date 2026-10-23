@@ -1,22 +1,16 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{SchemaProvider, TableProvider};
-use datafusion::common::DataFusionError;
+use datafusion::common::{DataFusionError, Result};
 use std::sync::{Arc, Mutex};
-use thiserror::Error;
 
-use crate::schema_provider::DatafusionJsonError::NoTableProviderFound;
+use crate::error::DatafusionJsonError::{self, NoTableProviderFound};
 use crate::serialization::SerializableTableAndSchema;
-
-#[derive(Debug, Error)]
-enum DatafusionJsonError {
-    #[error("No TableProvider found for `{0}`")]
-    NoTableProviderFound(String),
-}
 
 /// DatafusionJsonSchema is a schema provider for Datafusion that provides access to JSON files.
 #[derive(Debug)]
 pub struct DatafusionJsonSchema {
+    name: String,
     inner: Arc<Mutex<DatafusionJsonSchemaInner>>,
 }
 
@@ -27,15 +21,22 @@ struct DatafusionJsonSchemaInner {
 
 impl DatafusionJsonSchema {
     /// Creates an empty schema with no tables.
-    pub fn new() -> Self {
+    pub fn new(schema_name: String) -> Self {
         let inner = Arc::new(Mutex::new(DatafusionJsonSchemaInner {
             table_names_cache: DashMap::<String, Arc<dyn TableProvider>>::new(),
         }));
 
-        Self { inner }
+        Self {
+            name: schema_name,
+            inner,
+        }
     }
 
-    pub fn get_serializable_schema_provider(
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    pub fn get_serializable_table(
         &self,
         key: String,
     ) -> Result<SerializableTableAndSchema, DatafusionJsonError> {
