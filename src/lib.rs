@@ -2,7 +2,6 @@ mod catalog_provider;
 mod schema_provider;
 mod serialization;
 pub use crate::catalog_provider::DatafusionJsonCatalog;
-pub use crate::serialization::SerializableTableProvider;
 
 #[cfg(test)]
 mod tests {

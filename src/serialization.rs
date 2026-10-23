@@ -1,8 +1,6 @@
 use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::datasource::TableProvider;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use std::sync::Arc;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct JsonData {
@@ -32,11 +30,7 @@ pub(crate) struct SerializableSchemaProvider {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct SerializableTableAndSchema {
+pub(crate) struct SerializableTableAndSchema {
     pub(crate) table_name: String,
     pub(crate) schema: SchemaRef,
-    pub(crate) provider: Arc<dyn SerializableTableProvider>,
 }
-
-#[typetag::serde(tag = "type")]
-pub trait SerializableTableProvider: TableProvider {}

@@ -1,17 +1,13 @@
 use async_trait::async_trait;
 use datafusion::arrow::datatypes::{DataType, Field, Schema, SchemaRef};
-use datafusion::catalog::{CatalogProvider, MemorySchemaProvider, Session, TableProvider};
-use datafusion::datasource::TableType;
-use datafusion::datasource::memory::DataSourceExec;
-use datafusion::datasource::object_store::ObjectStoreUrl;
-use datafusion::datasource::physical_plan::{FileScanConfigBuilder, ParquetSource};
-use datafusion::logical_expr::Expr;
-use datafusion::physical_plan::ExecutionPlan;
-use datafusion_jc::{DatafusionJsonCatalog, SerializableTableProvider};
+use datafusion::catalog::{
+    CatalogProvider, MemorySchemaProvider, Session, TableProvider, TableProviderFactory,
+};
+use datafusion::logical_expr::CreateExternalTable;
+use datafusion_jc::DatafusionJsonCatalog;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::vec;
-use datafusion::datasource::table_schema::TableSchema;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct MyTableProvider {
@@ -24,36 +20,24 @@ impl MyTableProvider {
     fn new(name: String, schema: SchemaRef) -> Self {
         // Hardcode the path for this example.
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/userdata.parquet");
-        Self { name, schema, file: path.to_string() }
+        Self {
+            name,
+            schema,
+            file: path.to_string(),
+        }
     }
 }
 
 #[async_trait]
-impl TableProvider for MyTableProvider {
-    fn schema(&self) -> SchemaRef {
-        Arc::clone(&self.schema)
-    }
-
-    fn table_type(&self) -> TableType {
-        TableType::Base
-    }
-
-    async fn scan(
+impl TableProviderFactory for MyTableProvider {
+    async fn create(
         &self,
-        _state: &dyn Session,
-        _projection: Option<&Vec<usize>>,
-        _filters: &[Expr],
-        _limit: Option<usize>,
-    ) -> datafusion::common::Result<Arc<dyn ExecutionPlan>> {
-        let table_schema = TableSchema::new()
-        let file_source = Arc::new(ParquetSource::new())
-        let config = FileScanConfigBuilder::new(ObjectStoreUrl::local_filesystem(), None);
-        Ok(Arc::new(DataSourceExec::new(Arc::new(/* dyn DataSource */))))
+        state: &dyn Session,
+        cmd: &CreateExternalTable,
+    ) -> datafusion::common::Result<Arc<dyn TableProvider>> {
+        todo!()
     }
 }
-
-#[typetag::serde]
-impl SerializableTableProvider for MyTableProvider {}
 
 #[tokio::main]
 async fn main() -> datafusion::common::Result<()> {

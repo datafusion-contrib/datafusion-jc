@@ -1,11 +1,11 @@
 use crate::schema_provider::DatafusionJsonSchema;
-use crate::serialization::{
-    JsonData, SerializableSchemaProvider, SerializableTableAndSchema, SerializableTableProvider,
-};
+use crate::serialization::{JsonData, SerializableSchemaProvider, SerializableTableAndSchema};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use datafusion::catalog::{CatalogProvider, SchemaProvider};
 use datafusion::common::DataFusionError;
+use datafusion::datasource::TableProvider;
+use datafusion::execution::SessionState;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
@@ -13,6 +13,7 @@ struct DatafusionJsonCatalogInner {
     catalog_name: String,
     catalog_path: String,
     schema_providers: DashMap<String, Arc<DatafusionJsonSchema>>,
+    session_state: SessionState,
 }
 
 /// A DataFusion [`CatalogProvider`] whose catalog metadata and table schemas
@@ -24,24 +25,32 @@ pub struct DatafusionJsonCatalog {
 
 impl DatafusionJsonCatalog {
     /// Creates an empty catalog with the given name and storage path.
-    pub fn new(catalog_name: String, catalog_path: String) -> datafusion::common::Result<Self> {
+    pub fn new(
+        catalog_name: String,
+        catalog_path: String,
+        session_state: SessionState,
+    ) -> datafusion::common::Result<Self> {
         let inner = Arc::new(Mutex::new(DatafusionJsonCatalogInner {
             catalog_name,
             catalog_path,
             schema_providers: Default::default(),
+            session_state,
         }));
         Ok(Self { inner })
     }
 
     /// Builds a catalog from JSON produced by [`Self::encode_json`].
-    pub fn from_json(json: &str) -> datafusion::common::Result<Self> {
+    pub fn from_json(json: &str, session_state: SessionState) -> datafusion::common::Result<Self> {
         let json_data: JsonData = serde_json::from_str(json).unwrap();
         let inner = Arc::new(Mutex::new(DatafusionJsonCatalogInner {
             catalog_name: json_data.catalog_metadata.name,
             catalog_path: json_data.catalog_metadata.path,
             schema_providers: Default::default(),
+            session_state,
         }));
 
+        // TODO: Instead of serializing the entire table provider I need to make it so we can just
+        // rebuild the table_provider based on the data serialized in the JSON.
         for schema_provider in json_data.schema_providers {
             let schema_provider_ref = Arc::new(DatafusionJsonSchema::new());
             for table in schema_provider.tables {
@@ -66,13 +75,10 @@ impl DatafusionJsonCatalog {
             let mut provider_tables = vec![];
             for name in provider.table_names() {
                 let schema = provider.table(&name).await?.unwrap().schema();
-                let table_provider = provider
-                    .get_serializable_table_provider(name.clone())
-                    .unwrap();
+                let table_provider = provider.get_serializable_schema_provider(key);
                 let s = SerializableTableAndSchema {
                     table_name: name,
                     schema,
-                    provider: table_provider,
                 };
                 provider_tables.push(s);
             }
@@ -93,7 +99,7 @@ impl DatafusionJsonCatalog {
         &self,
         schema_name: &str,
         name: String,
-        table: Arc<dyn SerializableTableProvider>,
+        table: Arc<dyn TableProvider>,
     ) -> datafusion::common::Result<()> {
         let inner = self.inner.lock().unwrap();
         match inner.schema_providers.get_mut(schema_name) {
