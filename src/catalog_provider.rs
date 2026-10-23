@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
-use datafusion::catalog::{CatalogProvider, SchemaProvider};
-use datafusion::common::DataFusionError;
+use datafusion::catalog::{CatalogProvider, SchemaProvider, TableProviderFactory};
+use datafusion::common::{DFSchema, DataFusionError};
 use datafusion::datasource::TableProvider;
+use datafusion::datasource::provider::DefaultTableFactory;
 use datafusion::execution::SessionState;
+use datafusion::logical_expr::CreateExternalTable;
 use std::sync::{Arc, Mutex};
 
-use crate::error::DatafusionJsonError::{self, GenericError};
+use crate::error::DatafusionJsonError;
 use crate::schema_provider::DatafusionJsonSchema;
 use crate::serialization::{JsonData, SerializableSchemaProvider, SerializableTableAndSchema};
 
@@ -15,6 +17,7 @@ struct DatafusionJsonCatalogInner {
     catalog_name: String,
     catalog_path: String,
     schema_providers: DashMap<String, Arc<DatafusionJsonSchema>>,
+    #[allow(dead_code)]
     session_state: SessionState,
 }
 
@@ -42,13 +45,16 @@ impl DatafusionJsonCatalog {
     }
 
     /// Builds a catalog from JSON produced by [`Self::encode_json`].
-    pub fn from_json(json: &str, session_state: SessionState) -> datafusion::common::Result<Self> {
+    pub async fn from_json(
+        json: &str,
+        session_state: SessionState,
+    ) -> datafusion::common::Result<Self> {
         let json_data: JsonData = serde_json::from_str(json).unwrap();
         let inner = Arc::new(Mutex::new(DatafusionJsonCatalogInner {
             catalog_name: json_data.catalog_metadata.name,
             catalog_path: json_data.catalog_metadata.path,
             schema_providers: Default::default(),
-            session_state,
+            session_state: session_state.clone(),
         }));
 
         // TODO: Instead of serializing the entire table provider I need to make it so we can just
@@ -57,15 +63,26 @@ impl DatafusionJsonCatalog {
             let schema_provider_ref =
                 Arc::new(DatafusionJsonSchema::new(schema_provider.schema_name));
             // TODO: Fix me!
-
+            let table_factory = DefaultTableFactory::default();
             for table in schema_provider.tables {
-                schema_provider_ref.register_table(table.table_name, table..clone())?;
+                let table_builder = CreateExternalTable::builder(
+                    table.table_name.clone(),
+                    String::from("foo"),
+                    String::from("parquet"),
+                    Arc::new(DFSchema::try_from_qualified_schema(
+                        table.table_name.clone(),
+                        table.schema.as_ref(),
+                    )?),
+                )
+                .build();
+                let table_provider = table_factory.create(&session_state, &table_builder).await?;
+                schema_provider_ref.register_table(table.table_name, table_provider.clone())?;
             }
             inner
                 .lock()
                 .unwrap()
                 .schema_providers
-                .insert(schema_provider.schema_name, schema_provider_ref);
+                .insert(schema_provider_ref.name(), schema_provider_ref);
         }
 
         Ok(Self { inner })
@@ -74,18 +91,22 @@ impl DatafusionJsonCatalog {
     /// Serializes the catalog metadata and the Arrow schema of every
     /// registered table to a JSON string.
     pub async fn encode_json(&self) -> datafusion::common::Result<String> {
-        let inner = self.inner.lock().unwrap();
-        let schema_providers = self
-            .get_serializable_schemas()
-            .map_err(|err| DataFusionError::Execution(err.to_string()))?;
-        let data = JsonData::new(
-            inner.catalog_name.clone(),
-            inner.catalog_path.clone(),
-            schema_providers,
-        );
-        let output_json = serde_json::to_string(&data).unwrap();
+        match self.inner.lock() {
+            Ok(inner) => {
+                let schema_providers = self
+                    .get_serializable_schemas(&inner.schema_providers)
+                    .map_err(|err| DataFusionError::Execution(err.to_string()))?;
+                let data = JsonData::new(
+                    inner.catalog_name.clone(),
+                    inner.catalog_path.clone(),
+                    schema_providers,
+                );
+                let output_json = serde_json::to_string(&data).unwrap();
 
-        Ok(output_json)
+                Ok(output_json)
+            }
+            Err(err) => Err(DataFusionError::Execution(err.to_string())),
+        }
     }
 
     /// Registers `table` under `name` in the schema named `schema_name`.
@@ -110,32 +131,28 @@ impl DatafusionJsonCatalog {
 
     fn get_serializable_schemas(
         &self,
+        schema_providers: &DashMap<String, Arc<DatafusionJsonSchema>>,
     ) -> Result<Vec<SerializableSchemaProvider>, DatafusionJsonError> {
         let mut serializable_schemas = vec![];
-        match self.inner.lock() {
-            Ok(inner) => {
-                for entry in inner.schema_providers.iter() {
-                    let schema_provider = entry.value();
-                    let tables = schema_provider
-                        .table_names()
-                        .iter()
-                        .map(|table| {
-                            schema_provider
-                                .get_serializable_table(table.clone())
-                                .unwrap()
-                        })
-                        .collect::<Vec<SerializableTableAndSchema>>();
-                    let name = schema_provider.name();
-                    serializable_schemas.push(SerializableSchemaProvider {
-                        schema_name: name,
-                        tables,
-                    });
-                }
-
-                Ok(serializable_schemas)
-            }
-            Err(err) => Err(GenericError(err.to_string())),
+        for entry in schema_providers.iter() {
+            let schema_provider = entry.value();
+            let tables = schema_provider
+                .table_names()
+                .iter()
+                .map(|table| {
+                    schema_provider
+                        .get_serializable_table(table.clone())
+                        .unwrap()
+                })
+                .collect::<Vec<SerializableTableAndSchema>>();
+            let name = schema_provider.name();
+            serializable_schemas.push(SerializableSchemaProvider {
+                schema_name: name,
+                tables,
+            });
         }
+
+        Ok(serializable_schemas)
     }
 }
 
